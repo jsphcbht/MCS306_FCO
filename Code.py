@@ -157,3 +157,50 @@ plt.xlabel('Training CV macro F1 (error bars: fold SD)')
 plt.title('Classical classifier comparison')
 plt.tight_layout()
 plt.show()
+
+
+small_tree = make_pipeline(DecisionTreeClassifier(max_depth=3, min_samples_leaf=5, random_state=SEED))
+small_tree.fit(X_train, y_train)
+plt.figure(figsize=(17, 7))
+plot_tree(small_tree.named_steps['model'], feature_names=FEATURES,
+          class_names=small_tree.named_steps['model'].classes_.tolist(),
+          filled=True, rounded=True, fontsize=8)
+plt.title('Training tree: thresholds are in standardized units')
+plt.tight_layout()
+plt.show()
+
+search = GridSearchCV(make_pipeline(classifiers['Random Forest']),
+    param_grid={'model__max_depth': [3, 5, None], 'model__min_samples_leaf': [2, 5]},
+    scoring=macro_f1, cv=folds, n_jobs=1, refit=True, error_score='raise')
+search.fit(X_train, y_train)
+print('Best Random Forest settings:', search.best_params_)
+print('Best Random Forest CV macro F1:', round(search.best_score_, 3))
+display(pd.DataFrame(search.cv_results_)[['params', 'mean_test_score', 'std_test_score']]
+        .sort_values('mean_test_score', ascending=False))
+
+best_name = comparison.iloc[0]['model']
+if search.best_score_ > comparison.iloc[0]['macro_f1']:
+    selected_name = 'Tuned Random Forest'
+    final_model = clone(search.best_estimator_)
+else:
+    selected_name = best_name
+    final_model = make_pipeline(classifiers[best_name])
+final_model.fit(X_train, y_train)
+pred = final_model.predict(X_test)
+test_metrics = {
+    'accuracy': accuracy_score(y_test, pred),
+    'balanced_accuracy': balanced_accuracy_score(y_test, pred),
+    'macro_f1': f1_score(y_test, pred, labels=CLASSES, average='macro', zero_division=0),
+}
+print('Selected using training CV:', selected_name)
+display(pd.Series(test_metrics, name='test_session_metric').round(3))
+print(classification_report(y_test, pred, labels=CLASSES, zero_division=0))
+
+# Training-derived environmental comparator: checks for setup shortcuts.
+environment_lookup = train.groupby(['Temperature', 'Humidity']).actual.agg(lambda s: s.mode().iloc[0])
+fallback = y_train.mode().iloc[0]
+environment_pred = [environment_lookup.get((t, h), fallback)
+                    for t, h in zip(test.Temperature, test.Humidity)]
+print('Environment-only accuracy:', round(accuracy_score(y_test, environment_pred), 3))
+print('Environment-only macro F1:', round(f1_score(y_test, environment_pred,
+      labels=CLASSES, average='macro', zero_division=0), 3))        
