@@ -124,3 +124,36 @@ for i, (fit_idx, val_idx) in enumerate(folds, start=1):
     assert set(y_train.iloc[val_idx]) == set(CLASSES), 'Validation fold lacks a class.'
     print(f'Fold {i}: {groups.iloc[fit_idx].nunique()} training participants, '
           f'{groups.iloc[val_idx].nunique()} validation participants')
+
+
+classifiers = {
+    'Dummy (majority)': DummyClassifier(strategy='most_frequent'),
+    'Logistic Regression': LogisticRegression(max_iter=3000, random_state=SEED),
+    'k-Nearest Neighbors': KNeighborsClassifier(n_neighbors=7),
+    'Gaussian Naive Bayes': GaussianNB(),
+    'Decision Tree': DecisionTreeClassifier(max_depth=4, min_samples_leaf=3, random_state=SEED),
+    'Random Forest': RandomForestClassifier(n_estimators=150, max_depth=5,
+                    min_samples_leaf=2, random_state=SEED, n_jobs=1),
+    'Support Vector Machine': SVC(C=1.0, kernel='rbf'),
+    'Gradient Boosting': GradientBoostingClassifier(n_estimators=60,
+                         max_depth=2, random_state=SEED),
+}
+macro_f1 = make_scorer(f1_score, labels=CLASSES, average='macro', pos_label=None, zero_division=0)
+scoring = {'accuracy': 'accuracy', 'balanced_accuracy': 'balanced_accuracy', 'macro_f1': macro_f1}
+rows = []
+for name, estimator in classifiers.items():
+    scores = cross_validate(make_pipeline(estimator), X_train, y_train,
+        cv=folds, scoring=scoring, n_jobs=1, error_score='raise')
+    rows.append({'model': name, 'macro_f1': scores['test_macro_f1'].mean(),
+        'fold_sd': scores['test_macro_f1'].std(),
+        'accuracy': scores['test_accuracy'].mean(),
+        'balanced_accuracy': scores['test_balanced_accuracy'].mean()})
+comparison = pd.DataFrame(rows).sort_values('macro_f1', ascending=False).reset_index(drop=True)
+display(comparison.round(3))
+order = comparison.iloc[::-1]
+plt.figure(figsize=(9, 5))
+plt.barh(order.model, order.macro_f1, xerr=order.fold_sd, capsize=3)
+plt.xlabel('Training CV macro F1 (error bars: fold SD)')
+plt.title('Classical classifier comparison')
+plt.tight_layout()
+plt.show()
