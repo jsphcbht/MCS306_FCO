@@ -93,3 +93,34 @@ print('Training groups:', len(train), '| Test groups:', len(test))
 print('Training participants:', groups.nunique())
 display(X_train.isna().sum().to_frame('missing_training_session_values'))
 display(y_train.value_counts().reindex(CLASSES).to_frame('training_sessions'))
+
+
+fig, axes = plt.subplots(1, 3, figsize=(16, 4))
+sns.countplot(data=train, x='actual', order=CLASSES, ax=axes[0], color='steelblue')
+axes[0].tick_params(axis='x', rotation=25)
+axes[0].set_title('Training class balance (sessions)')
+sns.scatterplot(data=train, x='Temperature', y='Humidity', hue='actual', ax=axes[1])
+axes[1].set_title('Limited environmental coverage')
+sns.boxplot(data=train, x='actual', y='hrv_mean_hr', order=CLASSES, ax=axes[2])
+axes[2].tick_params(axis='x', rotation=25)
+axes[2].set_title('Mean heart rate by recorded label')
+plt.tight_layout()
+plt.show()
+display(train_raw.groupby('experiment')[TARGET].agg(['nunique', 'first']))
+display(train_raw.groupby(['Temperature', 'Humidity', TARGET]).size().to_frame('rows'))
+
+def make_pipeline(estimator):
+    return Pipeline([
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler()),
+        ('model', clone(estimator)),
+    ])
+
+cv = StratifiedGroupKFold(n_splits=4, shuffle=True, random_state=SEED)
+folds = list(cv.split(X_train, y_train, groups))
+for i, (fit_idx, val_idx) in enumerate(folds, start=1):
+    assert not set(groups.iloc[fit_idx]) & set(groups.iloc[val_idx])
+    assert set(y_train.iloc[fit_idx]) == set(CLASSES), 'Training fold lacks a class.'
+    assert set(y_train.iloc[val_idx]) == set(CLASSES), 'Validation fold lacks a class.'
+    print(f'Fold {i}: {groups.iloc[fit_idx].nunique()} training participants, '
+          f'{groups.iloc[val_idx].nunique()} validation participants')
