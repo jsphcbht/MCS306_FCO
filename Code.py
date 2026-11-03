@@ -203,4 +203,30 @@ environment_pred = [environment_lookup.get((t, h), fallback)
                     for t, h in zip(test.Temperature, test.Humidity)]
 print('Environment-only accuracy:', round(accuracy_score(y_test, environment_pred), 3))
 print('Environment-only macro F1:', round(f1_score(y_test, environment_pred,
-      labels=CLASSES, average='macro', zero_division=0), 3))        
+      labels=CLASSES, average='macro', zero_division=0), 3))   
+
+ConfusionMatrixDisplay.from_predictions(y_test, pred, labels=CLASSES,
+    cmap='Blues', xticks_rotation=30, colorbar=False)
+plt.title('Test sessions: thermal-sensation confusion matrix')
+plt.tight_layout()
+plt.show()
+
+diagnostics = test[FEATURES + ['experiment']].copy()
+diagnostics['participant_code'] = pd.factorize(test.subject)[0] + 1
+diagnostics['actual'] = y_test.to_numpy()
+diagnostics['predicted'] = pred
+diagnostics['correct'] = diagnostics.actual.eq(diagnostics.predicted)
+display(diagnostics.loc[~diagnostics.correct].head(10))
+participant_results = diagnostics.groupby('participant_code').correct.agg(['count', 'mean'])
+display(participant_results.rename(columns={'count': 'sessions', 'mean': 'accuracy'}))
+print('Mean participant accuracy:', round(participant_results['mean'].mean(), 3))
+
+importance = permutation_importance(final_model, X_test, y_test, scoring=macro_f1,
+    n_repeats=10, random_state=SEED, n_jobs=1)
+importance_table = pd.DataFrame({'feature': FEATURES, 'importance': importance.importances_mean,
+    'sd': importance.importances_std}).sort_values('importance')
+plt.figure(figsize=(8, 4))
+plt.barh(importance_table.feature, importance_table.importance, xerr=importance_table.sd)
+plt.xlabel('Decrease in macro F1 after shuffling (exploratory)')
+plt.tight_layout()
+plt.show()
